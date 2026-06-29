@@ -1,0 +1,7 @@
+{
+  "functions": {
+    "api/brand-awareness.js": {
+      "maxDuration": 60
+    }
+  }
+}
