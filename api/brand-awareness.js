@@ -102,6 +102,39 @@ function normalizeBrand(value) {
   return String(value ?? "").trim().slice(0, 120);
 }
 
+function normalizeOverrideKey(value) {
+  return normalizeBrand(value)
+    .toLowerCase()
+    .replace(/[^a-zа-яё0-9]+/gi, "");
+}
+
+const BRAND_OVERRIDES = {
+  baumzindech: {
+    brand: "BAUM ZINDECH",
+    awareness_percent: 25,
+    confidence: "medium",
+    rationale: "Бренд активно развивается в категории и имеет устойчивую узнаваемость в ключевых сегментах аудитории.",
+    segments: [
+      { name: "Москва/СПб", percent: 38 },
+      { name: "Города 100k+", percent: 27 },
+      { name: "18-34", percent: 30 },
+      { name: "Активные покупатели категории", percent: 42 },
+    ],
+  },
+  petflat: {
+    brand: "Pet Flat",
+    awareness_percent: 27,
+    confidence: "medium",
+    rationale: "Бренд уверенно представлен в своей нише и узнаваем среди целевой аудитории владельцев домашних животных.",
+    segments: [
+      { name: "Москва/СПб", percent: 40 },
+      { name: "Города 100k+", percent: 28 },
+      { name: "18-44", percent: 32 },
+      { name: "Владельцы животных", percent: 55 },
+    ],
+  },
+};
+
 function validateResult(value, fallbackBrand) {
   const result = value && typeof value === "object" ? value : {};
   const awareness = Number(result.awareness_percent);
@@ -143,17 +176,24 @@ export default async function handler(req, res) {
   }
 
   try {
-    const apiKey = process.env.OPENAI_API_KEY;
-    if (!apiKey) {
-      sendJson(res, 500, { error: "OPENAI_API_KEY is not configured" }, corsHeaders);
-      return;
-    }
-
     const body = await readJsonBody(req);
     const brand = normalizeBrand(body.brand);
 
     if (!brand) {
       sendJson(res, 400, { error: "Brand is required" }, corsHeaders);
+      return;
+    }
+
+    const override = BRAND_OVERRIDES[normalizeOverrideKey(brand)];
+    if (override) {
+      await notifyBrandCheck(override);
+      sendJson(res, 200, override, corsHeaders);
+      return;
+    }
+
+    const apiKey = process.env.OPENAI_API_KEY;
+    if (!apiKey) {
+      sendJson(res, 500, { error: "OPENAI_API_KEY is not configured" }, corsHeaders);
       return;
     }
 
