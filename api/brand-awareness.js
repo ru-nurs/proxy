@@ -115,10 +115,10 @@ const BRAND_OVERRIDES = {
     confidence: "medium",
     rationale: "Бренд активно развивается в категории и имеет устойчивую узнаваемость в ключевых сегментах аудитории.",
     segments: [
-      { name: "Москва/СПб", percent: 38 },
-      { name: "Города 100k+", percent: 27 },
-      { name: "18-34", percent: 30 },
-      { name: "Активные покупатели категории", percent: 42 },
+      { name: "18–24 года", percent: 30 },
+      { name: "25–34 года", percent: 28 },
+      { name: "35+ лет", percent: 18 },
+      { name: "Города-миллионники", percent: 38 },
     ],
   },
   petflat: {
@@ -127,13 +127,53 @@ const BRAND_OVERRIDES = {
     confidence: "medium",
     rationale: "Бренд уверенно представлен в своей нише и узнаваем среди целевой аудитории владельцев домашних животных.",
     segments: [
-      { name: "Москва/СПб", percent: 40 },
-      { name: "Города 100k+", percent: 28 },
-      { name: "18-44", percent: 32 },
-      { name: "Владельцы животных", percent: 55 },
+      { name: "18–24 года", percent: 32 },
+      { name: "25–34 года", percent: 35 },
+      { name: "35+ лет", percent: 20 },
+      { name: "Города-миллионники", percent: 40 },
     ],
   },
 };
+
+const REQUIRED_SEGMENT_NAMES = [
+  "18–24 года",
+  "25–34 года",
+  "35+ лет",
+  "Города-миллионники",
+];
+
+function clampPercent(value) {
+  return Math.max(0, Math.min(100, Number(value) || 0));
+}
+
+function normalizeSegments(segments, awareness) {
+  const base = clampPercent(awareness);
+  const fallback = [
+    Math.min(100, Math.round(base * 1.6)),
+    Math.min(100, Math.round(base * 1.15)),
+    Math.max(0, Math.round(base * 0.55)),
+    Math.min(100, Math.round(base * 1.25)),
+  ];
+
+  const normalized = Array.isArray(segments)
+    ? segments.map((segment) => ({
+        name: String(segment?.name ?? "").toLowerCase(),
+        percent: clampPercent(segment?.percent),
+      }))
+    : [];
+
+  const pick = (index, patterns) => {
+    const found = normalized.find((segment) => patterns.some((pattern) => pattern.test(segment.name)));
+    return found ? found.percent : fallback[index];
+  };
+
+  return [
+    { name: REQUIRED_SEGMENT_NAMES[0], percent: pick(0, [/18.*24/, /молод/]) },
+    { name: REQUIRED_SEGMENT_NAMES[1], percent: pick(1, [/25.*34/]) },
+    { name: REQUIRED_SEGMENT_NAMES[2], percent: pick(2, [/35/, /45/, /взросл/]) },
+    { name: REQUIRED_SEGMENT_NAMES[3], percent: pick(3, [/миллион/, /москва/, /спб/, /100k/, /100к/]) },
+  ];
+}
 
 function validateResult(value, fallbackBrand) {
   const result = value && typeof value === "object" ? value : {};
@@ -141,23 +181,14 @@ function validateResult(value, fallbackBrand) {
   const confidence = ["low", "medium", "high"].includes(result.confidence)
     ? result.confidence
     : "medium";
-
-  const segments = Array.isArray(result.segments)
-    ? result.segments
-        .map((segment) => ({
-          name: String(segment?.name ?? "").trim(),
-          percent: Math.max(0, Math.min(100, Number(segment?.percent) || 0)),
-        }))
-        .filter((segment) => segment.name)
-        .slice(0, 4)
-    : [];
+  const normalizedAwareness = Math.max(0, Math.min(100, Number.isFinite(awareness) ? awareness : 0));
 
   return {
     brand: String(result.brand || fallbackBrand),
-    awareness_percent: Math.max(0, Math.min(100, Number.isFinite(awareness) ? awareness : 0)),
+    awareness_percent: normalizedAwareness,
     confidence,
     rationale: String(result.rationale || ""),
-    segments,
+    segments: normalizeSegments(result.segments, normalizedAwareness),
   };
 }
 
@@ -195,20 +226,31 @@ function parseJsonObject(text) {
 }
 
 const BRAND_AWARENESS_PROMPT = `Ты — аналитик по узнаваемости брендов в России.
-На вход дают название бренда. Оцени aided awareness: какой процент взрослого населения России (18+) знает бренд хотя бы на уровне «слышал название» или узнает его после подсказки категории/основателя/продукта.
-Используй здравый смысл, открытые маркетинговые данные, интернет-упоминания и опыт. Не занижай современные digital-first и инфлюенсерские бренды: если бренд имеет сильного публичного основателя, активные соцсети, продажи на маркетплейсах, федеральную/региональную розницу, заметные PR-упоминания или высокую видимость в своей категории, это должно повышать общую оценку.
-Калибровка:
-- национальные массовые бренды: 65-95%;
-- заметные бренды с федеральной дистрибуцией или сильным медийным лицом: 35-70%;
-- нишевые, но реально продающиеся и обсуждаемые бренды: 15-35%;
-- малоизвестные локальные бренды: 3-15%;
-- неизвестные/выдуманные бренды: 0-5%.
-Для инфлюенсерских брендов учитывай перенос узнаваемости от основателя, но не приравнивай бренд к известности человека полностью. Если основатель широко известен в России, бренд обычно не должен получать очень низкую оценку.
+На вход дают название бренда. Оцени aided awareness — какой процент взрослого населения России (18+) узнает этот бренд при упоминании в его категории, то есть хотя бы на уровне «слышал название».
+Используй здравый смысл, открытые маркетинговые данные, интернет-упоминания и опыт. Будь последовательным: одинаковый бренд должен давать близкую оценку.
+
+Калибровка, ориентиры, шкала непрерывная:
+- мировые мега-бренды вроде Coca-Cola, Nike, Apple, Samsung, IKEA, McDonald's, Google: 92-98%;
+- крупные федеральные и сильные мировые бренды в РФ вроде Sber, Yandex, Wildberries, Ozon, Pepsi, L'Oreal, Nivea, Adidas, Bosch: 75-92%;
+- известные российские бренды среднего масштаба, заметные в ритейле и медиа вроде Splat, Natura Siberica, Черная Карта, Лента, Магнит Косметик: 55-75%;
+- растущие D2C/категорийные бренды с активным digital-присутствием и дистрибуцией на WB/Ozon вроде Revyline, Levrana, Mixit, Don't Touch My Skin: 20-45%;
+- нишевые бренды с устойчивой аудиторией в своей категории: 18-35%;
+- малые, региональные или молодые бренды с заметным маркетингом: 8-18%;
+- совсем новые или малоизвестные бренды: 2-7%;
+- выдуманный/незнакомый бренд: 0-3%, confidence:"low".
+
+Не занижай оценки для брендов с активным digital-присутствием, инфлюенсерской поддержкой и широкой дистрибуцией: целевая аудитория их хорошо знает, и aided awareness обычно выше, чем кажется на первый взгляд.
+Для инфлюенсерских брендов учитывай перенос узнаваемости от основателя, но не приравнивай бренд к известности человека полностью.
 Будь последовательным: одинаковый бренд должен давать близкую оценку.
 Верни СТРОГО валидный JSON-объект без пояснений в формате:
 {"brand":"...", "awareness_percent": <число 0..100>, "confidence":"low"|"medium"|"high", "rationale":"1-2 коротких предложения на русском", "segments":[{"name":"<строка>", "percent": <число 0..100>}, ...]}
-Поле segments — массив из 2-4 объектов, КАЖДЫЙ строго вида {"name": "...", "percent": число}.
-Примеры сегментов: "Москва и СПб", "Города 100k+", "18–34 года", "Активные покупатели категории".
+Поле segments — массив строго из 4 объектов, КАЖДЫЙ строго вида {"name": "...", "percent": число}.
+Всегда возвращай segments именно в такой структуре и порядке:
+1. "18–24 года"
+2. "25–34 года"
+3. "35+ лет"
+4. "Города-миллионники"
+Для молодежных, digital-first и инфлюенсерских брендов обычно делай 18–24 заметно выше общей оценки, 25–34 умеренно выше или около общей оценки, 35+ ниже общей оценки, города-миллионники выше средней по стране.
 Если бренд неизвестен/выдуман — поставь низкий процент и confidence:"low".`;
 
 export default async function handler(req, res) {
