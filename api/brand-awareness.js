@@ -1,6 +1,8 @@
 const DEFAULT_ALLOWED_ORIGINS = [
   "https://vup-partner.ru",
   "https://www.vup-partner.ru",
+  "http://vup-partner.ru",
+  "http://www.vup-partner.ru",
   "http://localhost:5173",
   "http://localhost:3000",
 ];
