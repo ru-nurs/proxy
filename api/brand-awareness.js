@@ -161,6 +161,39 @@ function validateResult(value, fallbackBrand) {
   };
 }
 
+function extractResponseText(payload) {
+  if (typeof payload?.output_text === "string") return payload.output_text;
+
+  const chunks = [];
+  for (const item of payload?.output ?? []) {
+    for (const content of item?.content ?? []) {
+      if (typeof content?.text === "string") chunks.push(content.text);
+      if (typeof content?.output_text === "string") chunks.push(content.output_text);
+    }
+  }
+
+  return chunks.join("\n").trim();
+}
+
+function parseJsonObject(text) {
+  const cleaned = String(text || "")
+    .trim()
+    .replace(/^```(?:json)?\s*/i, "")
+    .replace(/\s*```$/i, "")
+    .trim();
+
+  try {
+    return JSON.parse(cleaned);
+  } catch {
+    const start = cleaned.indexOf("{");
+    const end = cleaned.lastIndexOf("}");
+    if (start >= 0 && end > start) {
+      return JSON.parse(cleaned.slice(start, end + 1));
+    }
+    throw new Error("Invalid JSON from OpenAI");
+  }
+}
+
 export default async function handler(req, res) {
   const corsHeaders = getCorsHeaders(req);
 
@@ -209,7 +242,7 @@ export default async function handler(req, res) {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 45_000);
 
-    const openaiResponse = await fetch(`${baseUrl}/chat/completions`, {
+    const openaiResponse = await fetch(`${baseUrl}/responses`, {
       method: "POST",
       signal: controller.signal,
       headers: {
@@ -217,13 +250,18 @@ export default async function handler(req, res) {
         "Authorization": `Bearer ${apiKey}`,
       },
       body: JSON.stringify({
-        model: process.env.OPENAI_MODEL || "gpt-4o-mini",
-        messages: [
-          { role: "system", content: systemPrompt },
-          { role: "user", content: `Бренд: ${brand}` },
-        ],
-        temperature: 0,
-        response_format: { type: "json_object" },
+        model: process.env.OPENAI_MODEL || "gpt-5.5",
+        instructions: systemPrompt,
+        tools: [{
+          type: "web_search",
+          search_context_size: "medium",
+          user_location: {
+            type: "approximate",
+            country: "RU",
+          },
+        }],
+        input: `Бренд: ${brand}. Перед оценкой проверь актуальные данные и упоминания бренда в интернете. Ответь только JSON.`,
+        max_output_tokens: 1200,
       }),
     }).finally(() => clearTimeout(timeout));
 
@@ -242,8 +280,8 @@ export default async function handler(req, res) {
     }
 
     const json = await openaiResponse.json();
-    const content = json?.choices?.[0]?.message?.content || "{}";
-    const parsed = JSON.parse(content);
+    const content = extractResponseText(json) || "{}";
+    const parsed = parseJsonObject(content);
 
     const result = validateResult(parsed, brand);
     await notifyBrandCheck(result);
