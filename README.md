@@ -10,7 +10,6 @@ Add these in Vercel project settings:
 - `ALLOWED_ORIGINS` - allowed site origins, for example `https://vup-partner.ru,https://www.vup-partner.ru`.
 - `OPENAI_MODEL` - optional, default is `gpt-4o-mini`.
 - `OPENAI_BASE_URL` - optional, default is `https://api.openai.com/v1`.
-- `BRAND_AWARENESS_WEB_SEARCH` - optional, set to `true` to enable web search for brand checks. Disabled by default for faster responses.
 - `TELEGRAM_LEADS_BOT_TOKEN` - Telegram bot token for site leads.
 - `TELEGRAM_LEADS_CHAT_ID` - Telegram chat ID for site leads.
 - `TELEGRAM_BRAND_BOT_TOKEN` - optional Telegram bot token for brand checks.
@@ -34,7 +33,9 @@ Response:
   "awareness_percent": 70,
   "confidence": "high",
   "rationale": "...",
-  "segments": [{ "name": "Москва и СПб", "percent": 80 }]
+  "segments": [
+    { "name": "Москва и СПб", "percent": 80 }
+  ]
 }
 ```
 
