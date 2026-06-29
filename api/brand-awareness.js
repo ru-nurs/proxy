@@ -9,11 +9,14 @@ const DEFAULT_ALLOWED_ORIGINS = [
 
 function getAllowedOrigins() {
   const value = process.env.ALLOWED_ORIGINS;
-  if (!value) return DEFAULT_ALLOWED_ORIGINS;
-  return value
-    .split(",")
-    .map((origin) => origin.trim())
-    .filter(Boolean);
+  const envOrigins = value
+    ? value
+        .split(",")
+        .map((origin) => origin.trim())
+        .filter(Boolean)
+    : [];
+
+  return Array.from(new Set([...DEFAULT_ALLOWED_ORIGINS, ...envOrigins]));
 }
 
 function getCorsHeaders(req) {
