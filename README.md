@@ -12,6 +12,8 @@ Add these in Vercel project settings:
 - `OPENAI_BASE_URL` - optional, default is `https://api.openai.com/v1`.
 - `TELEGRAM_LEADS_BOT_TOKEN` - Telegram bot token for site leads.
 - `TELEGRAM_LEADS_CHAT_ID` - Telegram chat ID for site leads.
+- `TELEGRAM_BRAND_BOT_TOKEN` - optional Telegram bot token for brand checks.
+- `TELEGRAM_BRAND_CHAT_ID` - optional Telegram chat ID for brand checks.
 
 ## Brand endpoint
 

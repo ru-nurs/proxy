@@ -40,6 +40,40 @@ function sendJson(res, statusCode, payload, headers) {
   res.end(JSON.stringify(payload));
 }
 
+function escapeHtml(value) {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+}
+
+async function notifyBrandCheck(result) {
+  const token = process.env.TELEGRAM_BRAND_BOT_TOKEN;
+  const chatId = process.env.TELEGRAM_BRAND_CHAT_ID;
+  if (!token || !chatId) return;
+
+  const lines = [
+    "<b>🔎 Проверка бренда на сайте</b>",
+    `<b>Бренд:</b> ${escapeHtml(result.brand)}`,
+    `<b>Узнаваемость:</b> ${Math.round(result.awareness_percent)}%`,
+    `<b>Уверенность:</b> ${escapeHtml(result.confidence)}`,
+  ];
+
+  if (result.rationale) lines.push(`<b>Комментарий:</b> ${escapeHtml(result.rationale)}`);
+  lines.push(`<i>${new Date().toLocaleString("ru-RU", { timeZone: "Europe/Moscow" })} МСК</i>`);
+
+  await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      chat_id: chatId,
+      text: lines.join("\n"),
+      parse_mode: "HTML",
+      disable_web_page_preview: true,
+    }),
+  }).catch(() => {});
+}
+
 function readJsonBody(req) {
   return new Promise((resolve, reject) => {
     let body = "";
@@ -171,7 +205,10 @@ export default async function handler(req, res) {
     const content = json?.choices?.[0]?.message?.content || "{}";
     const parsed = JSON.parse(content);
 
-    sendJson(res, 200, validateResult(parsed, brand), corsHeaders);
+    const result = validateResult(parsed, brand);
+    await notifyBrandCheck(result);
+
+    sendJson(res, 200, result, corsHeaders);
   } catch (error) {
     const message = error?.name === "AbortError"
       ? "LLM request timeout"
