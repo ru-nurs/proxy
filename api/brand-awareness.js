@@ -194,6 +194,15 @@ function parseJsonObject(text) {
   }
 }
 
+const BRAND_AWARENESS_PROMPT = `Ты — аналитик по узнаваемости брендов в России.
+На вход дают название бренда. Оцени, какой процент взрослого населения России (18+) знает этот бренд хотя бы на уровне «слышал название».
+Используй здравый смысл, открытые маркетинговые данные и опыт. Будь последовательным: одинаковый бренд должен давать одинаковую оценку.
+Верни СТРОГО валидный JSON-объект без пояснений в формате:
+{"brand":"...", "awareness_percent": <число 0..100>, "confidence":"low"|"medium"|"high", "rationale":"1-2 коротких предложения на русском", "segments":[{"name":"<строка>", "percent": <число 0..100>}, ...]}
+Поле segments — массив из 2-4 объектов, КАЖДЫЙ строго вида {"name": "...", "percent": число}.
+Примеры сегментов: "Москва и СПб", "Города 100k+", "18–34 года", "Активные покупатели категории".
+Если бренд неизвестен/выдуман — поставь низкий процент и confidence:"low".`;
+
 export default async function handler(req, res) {
   const corsHeaders = getCorsHeaders(req);
 
@@ -251,7 +260,7 @@ export default async function handler(req, res) {
       },
       body: JSON.stringify({
         model: process.env.OPENAI_MODEL || "gpt-5.5",
-        instructions: systemPrompt,
+        instructions: BRAND_AWARENESS_PROMPT,
         tools: [{
           type: "web_search",
           search_context_size: "medium",
