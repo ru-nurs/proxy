@@ -28,7 +28,7 @@ function getCorsHeaders(req) {
     "Access-Control-Allow-Origin": allowedOrigin,
     "Access-Control-Allow-Methods": "POST, OPTIONS",
     "Access-Control-Allow-Headers": "Content-Type",
-    "Vary": "Origin",
+    Vary: "Origin",
   };
 }
 
@@ -99,7 +99,9 @@ function readJsonBody(req) {
 }
 
 function normalizeBrand(value) {
-  return String(value ?? "").trim().slice(0, 120);
+  return String(value ?? "")
+    .trim()
+    .slice(0, 120);
 }
 
 function normalizeOverrideKey(value) {
@@ -113,7 +115,8 @@ const BRAND_OVERRIDES = {
     brand: "BAUM ZINDECH",
     awareness_percent: 25,
     confidence: "medium",
-    rationale: "BAUM ZINDECH — российский бренд премиальной бытовой техники и товаров для дома, развивает дистрибуцию в федеральных сетях и на маркетплейсах (Wildberries, Ozon). Активно работает с performance-каналами и контент-маркетингом, благодаря чему имеет устойчивую узнаваемость среди аудитории, выбирающей технику средне-высокого ценового сегмента, и стабильный приток повторных покупателей в своей категории.",
+    rationale:
+      "BAUM ZINDECH — российский бренд премиальной бытовой техники и товаров для дома, развивает дистрибуцию в федеральных сетях и на маркетплейсах (Wildberries, Ozon). Активно работает с performance-каналами и контент-маркетингом, благодаря чему имеет устойчивую узнаваемость среди аудитории, выбирающей технику средне-высокого ценового сегмента, и стабильный приток повторных покупателей в своей категории.",
     segments: [
       { name: "18–24 года", percent: 30 },
       { name: "25–34 года", percent: 28 },
@@ -125,7 +128,8 @@ const BRAND_OVERRIDES = {
     brand: "Pet Flat",
     awareness_percent: 27,
     confidence: "medium",
-    rationale: "Pet Flat — российский D2C-бренд товаров для домашних животных (корма, лакомства, аксессуары), развивающийся через маркетплейсы и собственный онлайн-канал. Сильное digital-присутствие, работа с инфлюенсерами и зоо-сообществами обеспечивают высокую узнаваемость среди владельцев питомцев в крупных городах, особенно у аудитории 25–44 лет, ориентированной на качественный уход за животными.",
+    rationale:
+      "Pet Flat — российский D2C-бренд товаров для домашних животных (корма, лакомства, аксессуары), развивающийся через маркетплейсы и собственный онлайн-канал. Сильное digital-присутствие, работа с инфлюенсерами и зоо-сообществами обеспечивают высокую узнаваемость среди владельцев питомцев в крупных городах, особенно у аудитории 25–44 лет, ориентированной на качественный уход за животными.",
     segments: [
       { name: "18–24 года", percent: 32 },
       { name: "25–34 года", percent: 35 },
@@ -135,15 +139,37 @@ const BRAND_OVERRIDES = {
   },
 };
 
-const REQUIRED_SEGMENT_NAMES = [
-  "18–24 года",
-  "25–34 года",
-  "35+ лет",
-  "Города-миллионники",
-];
+const CACHE_TTL_MS = 24 * 60 * 60 * 1000;
+const resultCache = new Map();
+
+const REQUIRED_SEGMENT_NAMES = ["18–24 года", "25–34 года", "35+ лет", "Города-миллионники"];
 
 function clampPercent(value) {
   return Math.max(0, Math.min(100, Number(value) || 0));
+}
+
+function getCachedResult(brand) {
+  const key = normalizeOverrideKey(brand);
+  const cached = resultCache.get(key);
+
+  if (!cached) return null;
+  if (cached.expiresAt <= Date.now()) {
+    resultCache.delete(key);
+    return null;
+  }
+
+  return cached.result;
+}
+
+function setCachedResult(brand, result) {
+  resultCache.set(normalizeOverrideKey(brand), {
+    result,
+    expiresAt: Date.now() + CACHE_TTL_MS,
+  });
+}
+
+function notifyBrandCheckSoon(result) {
+  void notifyBrandCheck(result);
 }
 
 function normalizeSegments(segments, awareness) {
@@ -163,7 +189,9 @@ function normalizeSegments(segments, awareness) {
     : [];
 
   const pick = (index, patterns) => {
-    const found = normalized.find((segment) => patterns.some((pattern) => pattern.test(segment.name)));
+    const found = normalized.find((segment) =>
+      patterns.some((pattern) => pattern.test(segment.name)),
+    );
     return found ? found.percent : fallback[index];
   };
 
@@ -171,7 +199,10 @@ function normalizeSegments(segments, awareness) {
     { name: REQUIRED_SEGMENT_NAMES[0], percent: pick(0, [/18.*24/, /молод/]) },
     { name: REQUIRED_SEGMENT_NAMES[1], percent: pick(1, [/25.*34/]) },
     { name: REQUIRED_SEGMENT_NAMES[2], percent: pick(2, [/35/, /45/, /взросл/]) },
-    { name: REQUIRED_SEGMENT_NAMES[3], percent: pick(3, [/миллион/, /москва/, /спб/, /100k/, /100к/]) },
+    {
+      name: REQUIRED_SEGMENT_NAMES[3],
+      percent: pick(3, [/миллион/, /москва/, /спб/, /100k/, /100к/]),
+    },
   ];
 }
 
@@ -181,7 +212,10 @@ function validateResult(value, fallbackBrand) {
   const confidence = ["low", "medium", "high"].includes(result.confidence)
     ? result.confidence
     : "medium";
-  const normalizedAwareness = Math.max(0, Math.min(100, Number.isFinite(awareness) ? awareness : 0));
+  const normalizedAwareness = Math.max(
+    0,
+    Math.min(100, Number.isFinite(awareness) ? awareness : 0),
+  );
 
   return {
     brand: String(result.brand || fallbackBrand),
@@ -278,8 +312,16 @@ export default async function handler(req, res) {
 
     const override = BRAND_OVERRIDES[normalizeOverrideKey(brand)];
     if (override) {
-      await notifyBrandCheck(override);
+      setCachedResult(brand, override);
       sendJson(res, 200, override, corsHeaders);
+      notifyBrandCheckSoon(override);
+      return;
+    }
+
+    const cached = getCachedResult(brand);
+    if (cached) {
+      sendJson(res, 200, cached, corsHeaders);
+      notifyBrandCheckSoon(cached);
       return;
     }
 
@@ -289,39 +331,45 @@ export default async function handler(req, res) {
       return;
     }
 
-    const systemPrompt = `Ты аналитик по узнаваемости брендов в России.
-На вход дают название бренда. Оцени, какой процент взрослого населения России 18+ знает этот бренд хотя бы на уровне "слышал название".
-Используй здравый смысл, открытые маркетинговые данные и опыт. Будь последовательным: один и тот же бренд должен давать близкую оценку.
-Верни строго валидный JSON без пояснений в формате:
-{"brand":"...", "awareness_percent": число 0..100, "confidence":"low"|"medium"|"high", "rationale":"1-2 коротких предложения на русском", "segments":[{"name":"строка", "percent": число 0..100}]}
-Поле segments - массив из 2-4 объектов.
-Если бренд неизвестен или выдуман, поставь низкий процент и confidence:"low".`;
-
-    const baseUrl = (process.env.OPENAI_BASE_URL || "https://api.openai.com/v1").replace(/\/+$/, "");
+    const useWebSearch = process.env.BRAND_AWARENESS_WEB_SEARCH === "true";
+    const model = process.env.OPENAI_MODEL || (useWebSearch ? "gpt-5.5" : "gpt-4o-mini");
+    const baseUrl = (process.env.OPENAI_BASE_URL || "https://api.openai.com/v1").replace(
+      /\/+$/,
+      "",
+    );
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 45_000);
+    const timeout = setTimeout(() => controller.abort(), useWebSearch ? 45_000 : 15_000);
+
+    const requestBody = {
+      model,
+      instructions: BRAND_AWARENESS_PROMPT,
+      input: useWebSearch
+        ? `Бренд: ${brand}. Перед оценкой проверь актуальные данные и упоминания бренда в интернете. Ответь только JSON.`
+        : `Бренд: ${brand}. Дай быструю оценку по калибровке и ответь только JSON.`,
+      max_output_tokens: useWebSearch ? 1200 : 700,
+    };
+
+    if (useWebSearch) {
+      requestBody.tools = [
+        {
+          type: "web_search",
+          search_context_size: "low",
+          user_location: {
+            type: "approximate",
+            country: "RU",
+          },
+        },
+      ];
+    }
 
     const openaiResponse = await fetch(`${baseUrl}/responses`, {
       method: "POST",
       signal: controller.signal,
       headers: {
         "Content-Type": "application/json",
-        "Authorization": `Bearer ${apiKey}`,
+        Authorization: `Bearer ${apiKey}`,
       },
-      body: JSON.stringify({
-        model: process.env.OPENAI_MODEL || "gpt-5.5",
-        instructions: BRAND_AWARENESS_PROMPT,
-        tools: [{
-          type: "web_search",
-          search_context_size: "medium",
-          user_location: {
-            type: "approximate",
-            country: "RU",
-          },
-        }],
-        input: `Бренд: ${brand}. Перед оценкой проверь актуальные данные и упоминания бренда в интернете. Ответь только JSON.`,
-        max_output_tokens: 1200,
-      }),
+      body: JSON.stringify(requestBody),
     }).finally(() => clearTimeout(timeout));
 
     if (!openaiResponse.ok) {
@@ -343,13 +391,13 @@ export default async function handler(req, res) {
     const parsed = parseJsonObject(content);
 
     const result = validateResult(parsed, brand);
-    await notifyBrandCheck(result);
+    setCachedResult(brand, result);
 
     sendJson(res, 200, result, corsHeaders);
+    notifyBrandCheckSoon(result);
   } catch (error) {
-    const message = error?.name === "AbortError"
-      ? "LLM request timeout"
-      : error?.message || "Unknown error";
+    const message =
+      error?.name === "AbortError" ? "LLM request timeout" : error?.message || "Unknown error";
     sendJson(res, 500, { error: message }, corsHeaders);
   }
 }
